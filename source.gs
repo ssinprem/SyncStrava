@@ -11,6 +11,7 @@ const CALENDAR_ID = scriptProperties.getProperty('CALENDAR_ID');
 
 function syncStravaToCalendar() {
   const accessToken = getStravaAccessToken();
+  Logger.log(accessToken);
   if (!accessToken) {
     Logger.log("Failed to get Access Token");
     return;
@@ -300,12 +301,15 @@ function addOrUpdateActivityInCalendar(calendar, activity, accessToken) {
     description += `\n`;
   }
 
-  // 📌 [ดึงข้อมูล LAPS / INTERVALS สำหรับ Training Run (3) และ Race Run (1)]
-  const isTrainingOrRace = ["Run", "VirtualRun"].includes(activity.type) && (activity.workout_type == 3 || activity.workout_type == 1);
+  // 📌 [ดึงข้อมูล LAPS / INTERVALS สำหรับ Training Run (3), Long Run(2) และ Race Run (1)]
+  const isTrainingOrRace = ["Run", "VirtualRun"].includes(activity.type) && ([1,2,3].includes(activity.workout_type));
   if (isTrainingOrRace) {
     const activityDetails = getStravaActivityDetails(activity.id, accessToken);
     if (activityDetails && activityDetails.laps && activityDetails.laps.length > 0) {
-      description += `\n⏱️ **Laps / Splits:**\n`;
+      if (activityDetails.description.split(/\n/).length > 4) {
+        description += "\n📝: "+ activityDetails.description + "\n";
+      }
+      description += `\n⏱️ Laps / Splits:\n`;
       activityDetails.laps.forEach((lap, idx) => {
         const lapDist = (lap.distance / 1000).toFixed(2);
         const lapTime = formatDuration(lap.moving_time);
