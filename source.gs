@@ -157,22 +157,22 @@ function getActivityEmoji(activity) {
       } else { // Easy Run
         extra += '🟢';
       }
-      return extra + '🏃';
+      return extra + '🏃🏻';
     case 'Ride':
     case 'VirtualRide':
     case 'EBikeRide':
-      return '🚴';
+      return '🚴🏻';
     case 'Swim':
-      return '🔵🏊';
+      return '🔵🏊🏼‍♂️';
     case 'WeightTraining':
     case 'Workout':
     case 'Crossfit':
-      return '🔵🏋️‍♂️';
+      return '🔵🏋🏻‍♂️';
     case 'Walk':
     case 'Hike':
-      return '🟢🚶';
+      return '🟢🚶🏻‍➡️';
     case 'Yoga':
-      return '🔵🧘';
+      return '🔵🧘🏻‍♂️';
     default:
       return '❓';
   }
@@ -217,12 +217,22 @@ function addOrUpdateActivityInCalendar(calendar, activity, accessToken) {
   // 1. กำหนดชื่อ Title ของ Event
   let title = '';
   if (isGymWorkout || activity.distance === 0) {
-    title = `${emoji} ${activity.name} (${movingTimeMin} mins)`;
+    title = `${activity.name} (${movingTimeMin} mins)`;
   } else {
-    title = `${emoji} ${activity.name} (${distanceKm} km)`;
+    title = `${activity.name} (${distanceKm} km)`;
   }
 
-  // 2. จัดการเรื่องสถานที่ (Location)
+  // 2. ดึงข้อมูลรองเท้า (Shoes / Gear)
+  let shoeName = '';
+  let shoeIcon = '';
+  if (activity.gear_id) {
+    shoeName = getShoeNameFromStrava(activity.gear_id, accessToken);
+    shoeIcon = shoeName.split(" ")[0];
+  }
+
+  title = emoji + shoeIcon + title;
+
+  // 3. จัดการเรื่องสถานที่ (Location)
   let matchedLocationName = '';
   let locationString = '';
   let mapsUrl = '';
@@ -233,24 +243,21 @@ function addOrUpdateActivityInCalendar(calendar, activity, accessToken) {
     matchedLocationName = findMatchingLocation(lat, lng);
   }
 
-  if (matchedLocationName) {
+  if (activity.name.startsWith("Zwift")) {
+    title = "🌍" + title;
+  } else if (matchedLocationName) {
     locationString = matchedLocationName;
-    title = "🗺️" + title;
+    title = "📍" + title;
   } else if (activity.location_city || activity.location_state || activity.location_country) {
     const locParts = [activity.location_city, activity.location_state, activity.location_country].filter(Boolean);
     locationString = locParts.join(', ');
   } else if (activity.start_latlng && activity.start_latlng.length === 2){
-    title = "❔" + title;
+    title = "🗺️" + title;
   }
 
-  // 3. ดึงข้อมูลรองเท้า (Shoes / Gear)
-  let shoeName = '';
-  if (activity.gear_id) {
-    shoeName = getShoeNameFromStrava(activity.gear_id, accessToken);
-  }
 
   // 4. กำหนดรายละเอียด (Description)
-  let description = `Type: `;
+  let description = `Type: ${emoji} `;
   if (activity.type === "Run") {
     if (activity.workout_type == 1) {
       description += "Race ";
@@ -263,19 +270,19 @@ function addOrUpdateActivityInCalendar(calendar, activity, accessToken) {
   description += `${activity.type}\n`;
   
   if (activity.type === "Run" && activity.workout_type == 1) {
-    description += `Elapsed Time: ${formatDuration(activity.elapsed_time)} \n`;
+    description += `⏱️ Elapsed Time: ${formatDuration(activity.elapsed_time)} \n`;
   } else {
-    description += `Moving Time: ${formatDuration(activity.moving_time)} \n`;
+    description += `⏱️ Moving Time: ${formatDuration(activity.moving_time)} \n`;
   }
 
   if (!isGymWorkout && activity.distance > 0) {
-    description += `Distance: ${distanceKm} km\n`;
+    description += `🛣️ Distance: ${distanceKm} km\n`;
 
     if (["Run","VirtualRun"].includes(activity.type) && activity.average_speed) {
-      description += `Avg Pace: ${calculatePace(activity.moving_time, activity.distance)} /km\n`;
+      description += `🚀 Avg Pace: ${calculatePace(activity.moving_time, activity.distance)} /km\n`;
     } else if (activity.average_speed) {
       const speedKmh = (activity.average_speed * 3.6).toFixed(1);
-      description += `Avg Speed: ${speedKmh} km/h\n`;
+      description += `🚀 Avg Speed: ${speedKmh} km/h\n`;
     }
   }
 
@@ -301,36 +308,11 @@ function addOrUpdateActivityInCalendar(calendar, activity, accessToken) {
     description += `\n`;
   }
 
-  // 📌 [ดึงข้อมูล LAPS / INTERVALS สำหรับ Training Run (3), Long Run(2) และ Race Run (1)]
-  const isTrainingOrRace = ["Run", "VirtualRun"].includes(activity.type) && ([1,2,3].includes(activity.workout_type));
-  if (isTrainingOrRace) {
-    const activityDetails = getStravaActivityDetails(activity.id, accessToken);
-    if (activityDetails && activityDetails.laps && activityDetails.laps.length > 0) {
-      if (activityDetails.description.split(/\n/).length > 4) {
-        description += "\n📝: "+ activityDetails.description + "\n";
-      }
-      description += `\n⏱️ Laps / Splits:\n`;
-      activityDetails.laps.forEach((lap, idx) => {
-        const lapDist = (lap.distance / 1000).toFixed(2);
-        const lapTime = formatDuration(lap.moving_time);
-        const lapPace = calculatePace(lap.moving_time, lap.distance);
-        const lapHr = lap.average_heartrate ? ` | ❤️ ${Math.round(lap.average_heartrate)}` : '';
-        
-        description += `• Lap ${idx + 1}: ${lapDist} km | ⏱️ ${lapTime} | Pace ${lapPace} /km${lapHr}\n`;
-      });
-    }
-  }
-
   // ใส่ข้อมูลรองเท้า
   if (shoeName) {
-    description += `\n👟 Shoes: ${shoeName}\n`;
+    description += `👟 Shoes: ${shoeName}\n`;
   } else if (["Run","VirtualRun"].includes(activity.type)){
     title = `👟❓` + title;
-  }
-
-  // แสดง Description/Note จาก Strava
-  if (activity.description && activity.description.trim() !== '') {
-    description += `\n📝 Note:\n${activity.description.trim()}\n`;
   }
 
   if (locationString) {
@@ -342,6 +324,33 @@ function addOrUpdateActivityInCalendar(calendar, activity, accessToken) {
 
   const stravaUrl = `https://www.strava.com/activities/${activity.id}`;
   description += `\nStrava Link: ${stravaUrl}`;
+
+  // แสดง Description/Note จาก Strava
+  if (activity.description && activity.description.trim() !== '') {
+    description += `\n📝 Note:\n${activity.description.trim()}\n`;
+  }
+
+  // 📌 [ดึงข้อมูล LAPS / INTERVALS สำหรับ Training Run (3), Long Run(2) และ Race Run (1)]
+  const isTrainingOrRace = ["Run", "VirtualRun"].includes(activity.type) && ([1,2,3].includes(activity.workout_type));
+  const isWeightTraining = activity.type == "WeightTraining"
+  if (isTrainingOrRace || isWeightTraining) {
+    const activityDetails = getStravaActivityDetails(activity.id, accessToken);
+    if (activityDetails && activityDetails.description && activityDetails.description.split(/\n/).length > 4) {
+      description += "\n📝: "+ activityDetails.description + "\n";
+    }
+    if (activityDetails && activityDetails.laps && activityDetails.laps.length > 0) {
+      description += `\n⏱️ Laps / Splits:\n`;
+      activityDetails.laps.forEach((lap, idx) => {
+        const lapDist = (lap.distance / 1000).toFixed(2);
+        const lapTime = formatDuration(lap.moving_time);
+        const lapPace = calculatePace(lap.moving_time, lap.distance);
+        const lapHr = lap.average_heartrate ? ` | ❤️ ${Math.round(lap.average_heartrate)}` : '';
+        
+        description += `• Lap ${idx + 1}: ${lapDist} km | ⏱️ ${lapTime} | Pace ${lapPace} /km${lapHr}\n`;
+      });
+    }
+  }
+  
 
   // 5. ค้นหา Event เดิมจาก Strava Link ในช่วงเวลา +/- 1 วัน
   const searchStart = new Date(startTime.getTime() - (24 * 60 * 60 * 1000));
@@ -363,16 +372,16 @@ function addOrUpdateActivityInCalendar(calendar, activity, accessToken) {
       event.setDescription(description);
       event.setLocation(locationString);
       event.setTime(startTime, endTime);
-      Logger.log(`Updated event: ${dateFormat} ${title}`);
+      Logger.log(`${dateFormat} Updated event:  ${title}`);
     } else {
-      Logger.log(`No changes for: ${dateFormat} ${title}`);
+      Logger.log(`${dateFormat} No changes for:  ${title}`);
     }
   } else {
     calendar.createEvent(title, startTime, endTime, {
       description: description,
       location: locationString
     });
-    Logger.log(`Added new event: ${dateFormat} ${title}`);
+    Logger.log(`${dateFormat} Added new event:  ${title}`);
   }
 }
 
@@ -388,7 +397,7 @@ function syncAllStravaHistory() {
   }
 
   let page = parseInt(scriptProperties.getProperty('CURRENT_PAGE') || '1');
-  const perPage = 50;
+  const perPage = 30;
 
   Logger.log(`--- Starting Sync Page: ${page} ---`);
 
